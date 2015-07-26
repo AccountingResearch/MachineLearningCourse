@@ -1,0 +1,78 @@
+---
+title: "Random Forest Prediction of Exercise Methods"
+output: html_document
+---
+
+##Introduction
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit, it is now possible to collect a large amount of data about personal activity relatively inexpensively.  These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks.  One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it.  In this project, I use data from accelerometers on the belt, forearm, arm, and dumbbell of six participants who were asked to perform barbell lifts correctly and incorrectly in 5 different ways.  I build and test models to predict the manner in which they did the exercise (ultimately choosing the random forest method due to its higher accuracy).
+
+##Cross-Validation
+```{r}
+library(caret)
+library(randomForest)
+library(rpart)
+```
+
+First, I read in the data and set the seed to 123 to ensure reproducibility.  Then I split the provided training set into training and verification subsets.  As shown in later sections, I use the training subset to build the models, and I use the verification subset to obtain the expected out-of-sample error rate for each model (on the basis of which I ultimately choose the random forest model).
+```{r}
+TrainingSet <- read.csv("TrainingData.csv")
+set.seed(123)
+Partition <- createDataPartition(TrainingSet$classe, p=.6, list=FALSE)
+VerificationSubset <- TrainingSet[-Partition,]
+TrainingSubset <- TrainingSet[Partition,]
+```
+
+##Building Models
+First, I examine the data dimensions.
+```{r}
+dim(TrainingSubset)
+```
+
+There are 159 (160 - 1) variables to be considered.  I use the nearZeroVar function in the caret package to reduce the number of variables by eliminating those that have poor predictive value due to low variance (I also remove the index).
+```{r}
+NearZero <- nearZeroVar(TrainingSubset, saveMetrics=TRUE)
+TrainingSubset <- subset(TrainingSubset, select=!NearZero$nzv)
+TrainingSubset <- subset(TrainingSubset, select=-X)
+```
+
+Next, I eliminate any NAs in the data.  In order to determine how to do this, I evaluate the number of NAs for each variable.  If the data for a given variable consisted mostly of NAs, I planned to eliminate the variable entirely.  Otherwise, I planned to eliminate the NAs through replacement.  Because all of the NAs happened to be located under variables with a majority of NAs, eliminating the NA majority variables eliminated all of the NAs.  Therefore, no NAs were replaced.
+
+```{r}
+NAs <- apply(TrainingSubset, 2, is.na)
+num.NAs <- apply(NAs, 2, sum)
+MostlyNAs <- num.NAs/dim(TrainingSubset)[1] > .5
+TrainingSubset <- subset(TrainingSubset, select=!MostlyNAs)
+```
+
+Because the prediction model is to be based on monitor information (not on who the subjects are or when the exercises are performed), I also eliminate the four variables involving times and usernames.
+```{r}
+TrainingSubset <- TrainingSubset[,5:58]
+```
+
+Lastly, I build competing rpart, lda, and random forest models, and apply all of them to the verification subset to generate an accuracy rate for each of them.
+```{r}
+RpartModel <- rpart(classe~., data=TrainingSubset)
+Predict <- predict(RpartModel, VerificationSubset, type="class")
+AccuracyRate <- confusionMatrix(Predict, VerificationSubset$classe)$overall[1]
+AccuracyRate
+```
+
+```{r}
+LdaModel <- train(classe~., data=TrainingSubset, method="lda")
+Predict <- predict(LdaModel, VerificationSubset)
+AccuracyRate <- confusionMatrix(Predict, VerificationSubset$classe)$overall[1]
+AccuracyRate
+```
+
+```{r cache=TRUE}
+RandomforestModel <- randomForest(classe~., data=TrainingSubset)
+Predict <- predict(RandomforestModel, VerificationSubset)
+AccuracyRate <- confusionMatrix(Predict, VerificationSubset$classe)$overall[1]
+AccuracyRate
+```
+
+##Expected Out-of-Sample Error
+Because the random forest model has the highest out-of-sample accuracy at 99.7% (0.3% error rate), I choose this model to complete the second (automatically graded) portion of the course project.
+
+##Citations
+This project is a requirement of Coursera's Practical Machine Learning course under the Data Science specialization.  The data for this project comes from [http://groupware.les.inf.puc-rio.br/har](http://groupware.les.inf.puc-rio.br/har).
